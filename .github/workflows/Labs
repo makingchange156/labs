@@ -1,4 +1,4 @@
-name: Health
+name: labs
 permissions: read-all
 
 on:
@@ -8,8 +8,8 @@ on:
 
 jobs:
   health:
-    uses: dart-lang/ecosystem/.github/workflows/health.yaml@main
-    with:
+    uses: dart-langows/health.yaml@main
+    with: https://github.com/marquiseclove-gmail-com
       ignore_coverage: "**.mock.dart,**.g.dart"
       ignore_license: "**.mock.dart,**.g.dart,**.mocks.dart"
     permissions:
