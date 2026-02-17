@@ -1,0 +1,272 @@
+// Copyright (c) 2025, the Dart project authors.  Please see the AUTHORS file
+// for details. All rights reserved. Use of this source code is governed by a
+// BSD-style license that can be found in the LICENSE file.
+
+@TestOn('vm')
+library;
+
+import 'dart:io' as io;
+import 'dart:typed_data';
+
+import 'package:io_file/io_file.dart';
+import 'package:path/path.dart' as p;
+import 'package:test/test.dart';
+import 'package:win32/win32.dart' as win32;
+
+import 'errors.dart' as errors;
+import 'test_utils.dart';
+
+void main() {
+  group('writeAsBytes', () {
+    late String tmp;
+    late String cwd;
+
+    setUp(() {
+      tmp = createTemp('writeAsBytes');
+      cwd = fileSystem.currentDirectory;
+      fileSystem.currentDirectory = tmp;
+    });
+
+    tearDown(() {
+      fileSystem.currentDirectory = cwd;
+      deleteTemp(tmp);
+    });
+
+    test('directory', () {
+      expect(
+        () => fileSystem.writeAsBytes(
+          tmp,
+          Uint8List(5),
+          WriteMode.truncateExisting,
+        ),
+        throwsA(
+          isA<IOFileException>()
+              .having(
+                (e) => e.errorCode,
+                'errorCode',
+                io.Platform.isWindows
+                    ? win32.ERROR_ACCESS_DENIED
+                    : errors.eisdir,
+              )
+              .having((e) => e.path1, 'path1', tmp),
+        ),
+      );
+    });
+
+    test('symlink', () {
+      final filePath = '$tmp/file1';
+      final symlinkPath = '$tmp/file2';
+      final data = randomUint8List(20);
+      io.File(filePath).writeAsBytesSync(Uint8List(0));
+      io.Link(symlinkPath).createSync(filePath);
+
+      fileSystem.writeAsBytes(symlinkPath, data, WriteMode.truncateExisting);
+
+      expect(fileSystem.readAsBytes(symlinkPath), data);
+    });
+
+    group('broken symlink', () {
+      test('failExisting', () {
+        final filePath = '$tmp/file1';
+        final symlinkPath = '$tmp/file2';
+        final data = randomUint8List(20);
+        io.File(filePath).writeAsBytesSync(Uint8List(0));
+        io.Link(symlinkPath).createSync(filePath);
+        io.File(filePath).deleteSync();
+
+        if (io.Platform.isWindows) {
+          // Windows considers a broken symlink to not be an existing file.
+          fileSystem.writeAsBytes(
+            symlinkPath,
+            Uint8List.fromList(data),
+            WriteMode.failExisting,
+          );
+
+          // Should write at the symlink target, which should also mean that the
+          // symlink is no longer broken.
+          expect(fileSystem.readAsBytes(symlinkPath), data);
+          expect(fileSystem.readAsBytes(filePath), data);
+        } else {
+          expect(
+            () => fileSystem.writeAsBytes(
+              symlinkPath,
+              Uint8List.fromList(data),
+              WriteMode.failExisting,
+            ),
+            throwsA(
+              isA<PathExistsException>()
+                  .having(
+                    (e) => e.errorCode,
+                    'errorCode',
+                    io.Platform.isWindows
+                        ? win32.ERROR_FILE_EXISTS
+                        : errors.eexist,
+                  )
+                  .having((e) => e.path1, 'path1', symlinkPath),
+            ),
+          );
+        }
+      });
+      test('truncateExisting', () {
+        final filePath = '$tmp/file1';
+        final symlinkPath = '$tmp/file2';
+        final data = randomUint8List(20);
+        io.File(filePath).writeAsBytesSync(Uint8List(0));
+        io.Link(symlinkPath).createSync(filePath);
+        io.File(filePath).deleteSync();
+
+        fileSystem.writeAsBytes(symlinkPath, data, WriteMode.truncateExisting);
+
+        // Should write at the symlink target, which should also mean that the
+        // symlink is no longer broken.
+        expect(fileSystem.readAsBytes(symlinkPath), data);
+        expect(fileSystem.readAsBytes(filePath), data);
+      });
+    });
+
+    group('new file', () {
+      test('appendExisting', () {
+        final data = randomUint8List(20);
+        final path = '$tmp/file';
+
+        fileSystem.writeAsBytes(
+          path,
+          Uint8List.fromList(data),
+          WriteMode.appendExisting,
+        );
+
+        expect(io.File(path).readAsBytesSync(), data);
+      });
+
+      test('failExisting', () {
+        final data = randomUint8List(20);
+        final path = '$tmp/file';
+
+        fileSystem.writeAsBytes(
+          path,
+          Uint8List.fromList(data),
+          WriteMode.failExisting,
+        );
+
+        expect(io.File(path).readAsBytesSync(), data);
+      });
+
+      test('truncateExisting', () {
+        final data = randomUint8List(20);
+        final path = '$tmp/file';
+
+        fileSystem.writeAsBytes(
+          path,
+          Uint8List.fromList(data),
+          WriteMode.truncateExisting,
+        );
+
+        expect(io.File(path).readAsBytesSync(), data);
+      });
+    });
+
+    group('existing file', () {
+      test('appendExisting', () {
+        final data = randomUint8List(20);
+        final path = '$tmp/file';
+        io.File(path).writeAsBytesSync([1, 2, 3]);
+
+        fileSystem.writeAsBytes(
+          path,
+          Uint8List.fromList(data),
+          WriteMode.appendExisting,
+        );
+
+        expect(io.File(path).readAsBytesSync(), [1, 2, 3] + data);
+      });
+
+      test('null file', () {
+        final data = randomUint8List(20);
+
+        fileSystem.writeAsBytes(
+          io.Platform.isWindows ? r'\\.\NUL' : '/dev/null',
+          Uint8List.fromList(data),
+          WriteMode.appendExisting,
+        );
+      });
+
+      test('failExisting', () {
+        final data = randomUint8List(20);
+        final path = '$tmp/file';
+        io.File(path).writeAsBytesSync([1, 2, 3]);
+
+        expect(
+          () => fileSystem.writeAsBytes(path, data, WriteMode.failExisting),
+          throwsA(
+            isA<PathExistsException>()
+                .having(
+                  (e) => e.errorCode,
+                  'errorCode',
+                  io.Platform.isWindows
+                      ? win32.ERROR_FILE_EXISTS
+                      : errors.eexist,
+                )
+                .having((e) => e.path1, 'path1', path),
+          ),
+        );
+      });
+
+      test('truncateExisting', () {
+        final data = randomUint8List(20);
+        final path = '$tmp/file';
+        io.File(path).writeAsBytesSync([1, 2, 3]);
+
+        fileSystem.writeAsBytes(path, data, WriteMode.truncateExisting);
+
+        expect(io.File(path).readAsBytesSync(), data);
+      });
+    });
+
+    test('absolute path, long file name', () {
+      final data = randomUint8List(20);
+      final path = p.join(tmp, 'f' * 255);
+
+      fileSystem.writeAsBytes(path, data);
+      expect(fileSystem.readAsBytes(path), data);
+    });
+
+    test('relative path, long file name', () {
+      final data = randomUint8List(20);
+      final path = 'f' * 255;
+
+      fileSystem.writeAsBytes(path, data);
+      expect(fileSystem.readAsBytes(path), data);
+    });
+
+    group('regular files', () {
+      for (var i = 0; i <= 1024; ++i) {
+        test('Write small file: $i bytes', () {
+          final data = randomUint8List(i);
+          final path = '$tmp/file';
+
+          fileSystem.writeAsBytes(path, data);
+          expect(fileSystem.readAsBytes(path), data);
+        });
+      }
+
+      for (var i = 1 << 12; i <= 1 << 30; i <<= 4) {
+        test('Write large file: $i bytes', () {
+          final data = randomUint8List(i);
+          final path = '$tmp/file';
+
+          fileSystem.writeAsBytes(path, data);
+          expect(fileSystem.readAsBytes(path), data);
+        });
+      }
+
+      test('Write very large file', () {
+        // FreeBSD/Windows cannot write more than INT_MAX at once.
+        final data = randomUint8List(1 << 31 + 1);
+        final path = '$tmp/file';
+
+        fileSystem.writeAsBytes(path, data);
+        expect(fileSystem.readAsBytes(path), data);
+      }, skip: 'very slow');
+    });
+  });
+}

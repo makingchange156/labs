@@ -1,0 +1,21 @@
+# Run with `dart run ffigen --config ffigen.yaml`.
+name: NativeAddBindings
+description: |
+  Bindings for `src/functions.g.h`.
+
+  Regenerate bindings with `dart run tool/generate.dart`.
+output: 'lib/src/function_bindings.g.dart'
+headers:
+  entry-points:
+    - 'src/functions.g.h'
+
+  include-directives:
+    - 'src/functions.g.h'
+preamble: |
+  // ignore_for_file: type=lint
+comments:
+  style: any
+  length: full
+ffi-native:
+  asset-id: package:unix_api/libc_shim
+

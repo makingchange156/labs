@@ -1,0 +1,134 @@
+name: package:io_file
+
+permissions: read-all
+
+on:
+  # Run CI on pushes to the main branch, and on PRs against main.
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/io_file.yml'
+      - 'pkgs/io_file/**'
+      - 'pkgs/unix_api/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/io_file.yml'
+      - 'pkgs/io_file/**'
+      - 'pkgs/unix_api/**'
+  schedule:
+    - cron: '0 0 * * 0' # weekly
+
+defaults:
+  run:
+    working-directory: pkgs/io_file
+
+jobs:
+  analyze_and_format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c
+        with:
+          sdk: dev
+      - run: dart pub get
+      - run: dart analyze --fatal-infos
+      - run: dart format --output=none --set-exit-if-changed .
+
+  desktop-vm-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [dev]
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-11-arm, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c
+        with:
+          sdk: ${{ matrix.sdk }}
+      - run: dart test --reporter=failures-only --test-randomize-ordering-seed=random --platform vm
+
+  profile-vm-test:
+    # Ensure that the tests pass when run under the profiler (which sends
+    # SIG_PROF on Linux).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c
+        with:
+          sdk: dev
+      - run: dart --profiler --profile_period=50 test --reporter=failures-only --test-randomize-ordering-seed=random --platform vm
+
+  desktop-vm-benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [dev]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c
+        with:
+          sdk: ${{ matrix.sdk }}
+      - run: dart pub get
+      - name: 🪑 Run Read Benchmarks
+        run: dart run benchmarks/read_as_bytes.dart
+      - name: 🪑 Run Write Benchmarks
+        run: dart run benchmarks/write_as_bytes.dart
+
+  android-vm-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pkgs/io_file/mobile_test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e
+        with:
+          channel: master
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run tests
+        uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b
+        with:
+          api-level: 24
+          disable-animations: true
+          arch: x86_64
+          target: default
+          script: 'cd pkgs/io_file/mobile_test &&
+            flutter pub get && 
+            flutter test integration_test --reporter=failures-only --test-randomize-ordering-seed=random'
+
+  ios-vm-test:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: pkgs/io_file/mobile_test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e
+        with:
+          channel: master
+      - uses: futureware-tech/simulator-action@dab10d813144ef59b48d401cd95da151222ef8cd
+        with:
+          os: iOS
+          os_version: '>=13.0'
+
+      - run: |
+          flutter pub get
+          flutter test integration_test --reporter=failures-only --test-randomize-ordering-seed=random
+
+  web-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c
+        with:
+          sdk: dev
+      - run: dart test --reporter=failures-only --test-randomize-ordering-seed=random --platform chrome

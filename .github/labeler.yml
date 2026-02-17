@@ -1,0 +1,33 @@
+# Configuration for .github/workflows/pull_request_label.yml.
+
+'type-infra':
+  - changed-files:
+    - any-glob-to-any-file: '.github/**'
+
+'package:appengine':
+  - changed-files:
+    - any-glob-to-any-file: 'pkgs/appengine/**'
+
+'package:gcloud':
+  - changed-files:
+    - any-glob-to-any-file: 'pkgs/gcloud/**'
+
+'package:googleapis_firestore_v1':
+  - changed-files:
+    - any-glob-to-any-file: 'pkgs/googleapis_firestore_v1/**'
+
+'package:io_file':
+  - changed-files:
+    - any-glob-to-any-file: 'pkgs/io_file/**'
+
+'package:jot':
+  - changed-files:
+    - any-glob-to-any-file: 'pkgs/jot/**'
+
+'package:native_synchronization':
+  - changed-files:
+    - any-glob-to-any-file: 'pkgs/native_synchronization/**'
+
+'package:timezone':
+  - changed-files:
+    - any-glob-to-any-file: 'pkgs/timezone/**'

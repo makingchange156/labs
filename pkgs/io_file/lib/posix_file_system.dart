@@ -1,0 +1,6 @@
+// Copyright (c) 2025, the Dart project authors.  Please see the AUTHORS file
+// for details. All rights reserved. Use of this source code is governed by a
+// BSD-style license that can be found in the LICENSE file.
+
+export 'src/vm_posix_file_system.dart'
+    if (dart.library.html) 'src/web_posix_file_system.dart';
